@@ -4,65 +4,69 @@ using System.Collections.Generic;
 using System.Linq;
 using System.ServiceModel;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
-namespace Client
+namespace Replikator
 {
     class Program
-    {
+    { 
         static void Main(string[] args)
         {
-            ChannelFactory<IBiblioteka> cf = new ChannelFactory<IBiblioteka>("ServisBiblioteke");
-            IBiblioteka kanal = cf.CreateChannel();
-            Console.WriteLine("Uspjesno povezan na port 4000");
+            string tokenIzvor = Povezi("IzvorBezbednost");
+            string tokenOdrediste = Povezi("OdredisteBezbednost");
 
-            ChannelFactory<IBezbednosniMehanizmi> cfBezbednost = new ChannelFactory<IBezbednosniMehanizmi>("ServisBezbednost");
-            IBezbednosniMehanizmi kanalBezbednost = cfBezbednost.CreateChannel();
-            Console.WriteLine("Uspjesno povezan na port 4000 Bezbednosti");
+            ChannelFactory<IBiblioteka> cfIzvor = new ChannelFactory<IBiblioteka>("Izvor");
+            ChannelFactory<IBiblioteka> cfOdrediste = new ChannelFactory<IBiblioteka>("Odrediste");
 
-            string tokenP = "";
-            string tokenA = "";
+            IBiblioteka kanalIzvor = cfIzvor.CreateChannel();
+            IBiblioteka kanalOdrediste = cfOdrediste.CreateChannel();
+
+            while(true)
+            {
+                Dictionary<long, Clan> clanovi = new Dictionary<long, Clan>();
+
+                try
+                {
+                    clanovi = kanalIzvor.PreuzmiBazu(tokenIzvor);
+                }
+                catch (FaultException<BezbednosniIzuzetak> e)
+                {
+                    Console.WriteLine(e.Detail.Poruka);
+                }
+
+                Console.WriteLine("Replicirano {0} podataka", clanovi.Count);
+
+                try
+                {
+                    kanalOdrediste.PosaljiBazu(tokenOdrediste, clanovi);
+                }
+                catch (FaultException<BezbednosniIzuzetak> e)
+                {
+                    Console.WriteLine(e.Detail.Poruka);
+                }
+                Thread.Sleep(5000);
+
+            }
+        }
+
+        static string Povezi(string endpointname)
+        {
+            ChannelFactory<IBezbednosniMehanizmi> cfB = new ChannelFactory<IBezbednosniMehanizmi>(endpointname);
+            IBezbednosniMehanizmi kB = cfB.CreateChannel();
+
+            string token = "";
 
             try
             {
-                tokenP = kanalBezbednost.Autentifikacija("pera", "p3ra");
-            }
-            catch(FaultException<BezbednosniIzuzetak> izuzetak)
-            {
-                Console.WriteLine(izuzetak.Detail.Poruka);
-            }
-
-            try
-            {
-                tokenA = kanalBezbednost.Autentifikacija("admin", "adm1n");
-            }
-            catch (FaultException<BezbednosniIzuzetak> izuzetak)
-            {
-                Console.WriteLine(izuzetak.Detail.Poruka);
-            }
-
-            try
-            {
-                kanal.DodajClana(tokenA, new Clan("Dejan", "Kurdulija", 123456789));
-                Console.WriteLine("Uspjesno dodat clan");
+                token = kB.Autentifikacija("replikator", "repl1kator");
             }
             catch(FaultException<BezbednosniIzuzetak>izuzetak)
             {
                 Console.WriteLine(izuzetak.Detail.Poruka);
             }
 
-            try
-            {
-                kanal.DodajClana(tokenP, new Clan("Zdravko", "Milinkovic", 987654321));
-                Console.WriteLine("Uspjesno dodat clan");
-            }
-            catch (FaultException<BezbednosniIzuzetak> izuzetak)
-            {
-                Console.WriteLine(izuzetak.Detail.Poruka);
-            }
-
-            Console.ReadKey();
-
+            return token;
         }
     }
 }
